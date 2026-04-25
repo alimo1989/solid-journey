@@ -212,9 +212,7 @@ app.get("/api/coins", (req, res) => {
   res.json({ data: filtered, lastUpdated: cache.lastUpdated });
 });
 
-app.get("/", (req, res) => {
-  res.json({ message: "Signal Scanner Server", status: "ok", endpoints: ["/api/health", "/api/scan"] });
-});
+
 
 const COINS = process.env.COINS ? process.env.COINS.split(",") : DEFAULT_COINS;
 
