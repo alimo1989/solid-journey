@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Signal Desk — Bitunix Futures</title>
+<style>
+  :root {
+    --bg:#07090d; --card:#0d1520; --border:#182233; --dim:#0a111a;
+    --text:#c8d8e8; --muted:#4a6070;
+    --accent:#00d4ff; --green:#00e87a; --red:#ff3b5c;
+    --yellow:#ffcc00; --purple:#a78bfa; --orange:#fb923c;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:var(--bg);color:var(--text);font-family:sans-serif;min-height:100vh}
+  @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+  ::-webkit-scrollbar{width:4px}
+  ::-webkit-scrollbar-thumb{background:#1e2a38;border-radius:2px}
+
+  /* Header */
+  header{
+    background:rgba(7,9,13,.97);border-bottom:1px solid var(--border);
+    padding:12px 20px;position:sticky;top:0;z-index:100;
+    display:flex;align-items:center;justify-content:space-between;
+    flex-wrap:wrap;gap:10px;
+  }
+  .logo{font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:4px;color:var(--accent);line-height:1}
+  .logo-sub{font-family:monospace;font-size:9px;color:var(--muted);letter-spacing:2px}
+  .hdr-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .status-dot{width:7px;height:7px;border-radius:50%;display:inline-block;animation:blink 1.8s infinite}
+  .status-label{font-family:monospace;font-size:11px;display:flex;align-items:center;gap:5px}
+  #clock{font-family:monospace;font-size:11px;color:var(--muted)}
+  .btn{background:transparent;border:1px solid var(--border);color:var(--muted);
+    padding:5px 12px;border-radius:6px;font-family:monospace;font-size:10px;
+    cursor:pointer;letter-spacing:1px;transition:all .2s}
+  .btn:hover{border-color:var(--accent);color:var(--accent)}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .pill{font-family:monospace;font-size:10px;padding:3px 10px;border-radius:20px}
+  .pill-green{background:rgba(0,232,122,.1);border:1px solid rgba(0,232,122,.3);color:var(--green)}
+  .pill-red{background:rgba(255,59,92,.1);border:1px solid rgba(255,59,92,.3);color:var(--red)}
+
+  /* Countdown ring */
+  #cdRing{display:flex;align-items:center;gap:5px;font-family:monospace;font-size:10px;color:var(--muted)}
+
+  /* Main */
+  main{max-width:860px;margin:0 auto;padding:16px 20px}
+
+  /* Error banner */
+  .error-banner{
+    background:rgba(255,59,92,.07);border:1px solid rgba(255,59,92,.3);
+    border-radius:10px;padding:12px 16px;margin-bottom:14px;
+    font-family:monospace;font-size:12px;color:var(--red);line-height:1.7
+  }
+
+  /* Alert feed */
+  #alertFeed{background:var(--card);border:1px solid var(--border);
+    border-radius:12px;padding:12px 16px;margin-bottom:14px;display:none}
+  .alert-title{font-family:monospace;font-size:9px;color:var(--muted);letter-spacing:2px;margin-bottom:8px}
+  .alert-list{display:flex;flex-direction:column;gap:5px;max-height:140px;overflow-y:auto}
+  .alert-item{display:flex;align-items:center;gap:8px;padding:5px 10px;border-radius:6px;font-family:monospace;font-size:10px}
+
+  /* Filter tabs */
+  .filters{display:flex;gap:8px;margin-bottom:12px}
+  .filter-btn{padding:5px 14px;border-radius:20px;border:1px solid var(--border);
+    background:transparent;color:var(--muted);font-family:monospace;
+    font-size:9px;cursor:pointer;letter-spacing:1px;transition:all .2s}
+  .filter-btn.active-all{border-color:var(--accent);background:rgba(0,212,255,.1);color:var(--accent)}
+  .filter-btn.active-long{border-color:var(--green);background:rgba(0,232,122,.1);color:var(--green)}
+  .filter-btn.active-short{border-color:var(--red);background:rgba(255,59,92,.1);color:var(--red)}
+  .filter-btn.active-neutral{border-color:var(--yellow);background:rgba(255,204,0,.1);color:var(--yellow)}
+
+  /* Cards */
+  #coinsGrid{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
+  .coin-card{background:var(--card);border:1px solid var(--border);
+    border-radius:14px;overflow:hidden;transition:border-color .4s}
+  .coin-card.bias-long{border-color:rgba(0,232,122,.35)}
+  .coin-card.bias-short{border-color:rgba(255,59,92,.3)}
+
+  .card-header{padding:14px 16px;cursor:pointer;
+    display:flex;align-items:center;justify-content:space-between;gap:12px}
+  .card-header:hover{background:rgba(255,255,255,.02)}
+
+  .bias-badge{border-radius:6px;padding:4px 12px;font-family:monospace;
+    font-size:11px;font-weight:700;letter-spacing:1px;min-width:64px;text-align:center;
+    border:1px solid;flex-shrink:0}
+  .badge-long{background:rgba(0,232,122,.12);border-color:rgba(0,232,122,.4);color:var(--green)}
+  .badge-short{background:rgba(255,59,92,.12);border-color:rgba(255,59,92,.35);color:var(--red)}
+  .badge-neutral{background:rgba(255,204,0,.08);border-color:rgba(255,204,0,.3);color:var(--yellow)}
+  .badge-loading{background:rgba(74,96,112,.1);border-color:var(--border);color:var(--muted)}
+
+  .card-info{flex:1;min-width:0}
+  .card-name-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .coin-name{font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:2px;color:var(--text)}
+  .coin-price{font-family:monospace;font-size:14px;font-weight:700;color:var(--text)}
+  .coin-change{font-family:monospace;font-size:11px}
+  .fr-badge{font-family:monospace;font-size:10px;padding:1px 6px;border-radius:3px;background:rgba(0,0,0,.2)}
+  .trend-row{display:flex;gap:8px;margin-top:3px;flex-wrap:wrap}
+  .trend-item{font-family:monospace;font-size:9px}
+
+  .card-right{display:flex;align-items:center;gap:8px;flex-shrink:0}
+  .sparkline-wrap{width:80px;height:28px}
+  .chevron{color:var(--muted);font-size:11px}
+  .remove-btn{background:transparent;border:1px solid var(--border);color:var(--red);
+    padding:3px 8px;border-radius:4px;font-family:monospace;font-size:9px;
+    cursor:pointer;opacity:.5}
+  .remove-btn:hover{opacity:1}
+
+  /* Card detail */
+  .card-detail{border-top:1px solid var(--border);padding:14px 16px;display:none}
+  .card-detail.open{display:block}
+
+  /* Setup blocks */
+  .setups-row{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+  .setup-block{flex:1;min-width:140px;border-radius:10px;padding:12px 14px;
+    position:relative;overflow:hidden}
+  .setup-long{background:rgba(0,232,122,.08);border:1px solid rgba(0,232,122,.22)}
+  .setup-short{background:rgba(255,59,92,.08);border:1px solid rgba(255,59,92,.22)}
+  .setup-long.favoured{border-color:rgba(0,232,122,.55)}
+  .setup-short.favoured{border-color:rgba(255,59,92,.5)}
+  .favoured-tag{position:absolute;top:0;right:0;font-family:monospace;font-size:8px;
+    font-weight:700;padding:2px 8px;border-radius:0 10px 0 6px;letter-spacing:1px}
+  .tag-long{background:var(--green);color:#000}
+  .tag-short{background:var(--red);color:#fff}
+
+  .setup-header{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+  .setup-type{border-radius:5px;padding:3px 10px;font-family:monospace;
+    font-size:11px;font-weight:700;letter-spacing:1px;border:1px solid}
+  .type-long{background:rgba(0,232,122,.2);border-color:rgba(0,232,122,.44);color:var(--green)}
+  .type-short{background:rgba(255,59,92,.2);border-color:rgba(255,59,92,.44);color:var(--red)}
+  .setup-entry{font-family:monospace;font-size:13px;font-weight:700;margin-left:auto}
+
+  .condition-box{border-radius:8px;padding:10px 12px;margin-bottom:10px}
+  .cond-long{background:rgba(0,232,122,.08);border:1px solid rgba(0,232,122,.25)}
+  .cond-short{background:rgba(255,59,92,.08);border:1px solid rgba(255,59,92,.25)}
+  .cond-label{font-family:monospace;font-size:8px;letter-spacing:1px;margin-bottom:5px}
+  .cond-text{font-size:12px;color:var(--text);line-height:1.75;font-weight:500}
+
+  .levels-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;
+    background:var(--border);border-radius:7px;overflow:hidden;
+    border:1px solid var(--border);margin-bottom:8px}
+  .level-cell{background:var(--dim);padding:8px 10px}
+  .level-label{font-family:monospace;font-size:8px;color:var(--muted);letter-spacing:1px;margin-bottom:3px}
+  .level-val{font-family:monospace;font-size:12px;font-weight:700}
+
+  .invalid-box{background:rgba(255,59,92,.05);border:1px solid rgba(255,59,92,.15);
+    border-radius:6px;padding:7px 10px}
+< truncated lines 150-482 >
+    return;
+  }
+
+  if (filtered.length === 0) {
+    grid.innerHTML = `<div class="empty">Connecting to Bitunix server...</div>`;
+    return;
+  }
+
+  grid.innerHTML = filtered.map(coin => buildCard(coin)).join("");
+
+  // Draw sparklines
+  filtered.forEach(coin => {
+    const canvas = document.getElementById("spark-" + coin.symbol);
+    const prices = state.histories[coin.symbol] || [];
+    if (canvas && prices.length > 1) drawSparkline(canvas, prices);
+    // Restore expanded state
+    const detail = document.getElementById("detail-" + coin.symbol);
+    if (detail && state.expanded[coin.symbol]) detail.classList.add("open");
+  });
+
+  // Footer
+  document.getElementById("footerText").textContent =
+    state.fetchCount > 0
+      ? `${state.fetchCount} fetch${state.fetchCount>1?"es":""} · Server: ${SERVER} · Data: Bitunix API · Not financial advice`
+      : "Connecting...";
+}
+
+function buildCard(coin) {
+  const bias  = coin.bias || "NEUTRAL";
+  const price = parseFloat(coin.price) || 0;
+  const chg   = parseFloat(coin.change24h) || 0;
+  const fr    = parseFloat(coin.fundingRate) || 0;
+  const frCol = fr > 0.05 ? "#ff3b5c" : fr < -0.02 ? "#00e87a" : "#4a6070";
+
+  const biasCls = bias==="LONG"?"badge-long":bias==="SHORT"?"badge-short":"badge-neutral";
+  const cardCls = bias==="LONG"?"bias-long":bias==="SHORT"?"bias-short":"";
+  const chgCol  = chg >= 0 ? "#00e87a" : "#ff3b5c";
+
+  // Long setup
+  const ls = coin.long || {};
+  const lFav = bias==="LONG";
+  const longBlock = `
+    <div class="setup-block setup-long ${lFav?"favoured":""}">
+      ${lFav?'<div class="favoured-tag tag-long">FAVOURED</div>':""}
+      <div class="setup-header">
+        <span class="setup-type type-long">LONG</span>
+        <span class="setup-entry" style="color:#00e87a">${ls.entryFmt||"—"}</span>
+      </div>
+      <div class="condition-box cond-long">
+        <div class="cond-label" style="color:#00e87a">📋 ENTRY CONDITION</div>
+        <div class="cond-text">${ls.condition||"—"}</div>
+      </div>
+      <div class="levels-grid">
+        <div class="level-cell"><div class="level-label">STOP LOSS</div><div class="level-val" style="color:#ff3b5c">${ls.stopFmt||fp(ls.stopLoss)}</div></div>
+        <div class="level-cell"><div class="level-label">R:R (TP1)</div><div class="level-val" style="color:#ffcc00">${ls.rr1||"—"}</div></div>
+        <div class="level-cell"><div class="level-label">TAKE PROFIT 1</div><div class="level-val" style="color:#00e87a">${ls.tp1Fmt||fp(ls.tp1)}</div></div>
+        <div class="level-cell"><div class="level-label">TAKE PROFIT 2</div><div class="level-val" style="color:rgba(0,232,122,.65)">${ls.tp2Fmt||fp(ls.tp2)}</div></div>
+      </div>
+      <div class="invalid-box">
+        <div class="invalid-label">⛔ INVALIDATION</div>
+        <div class="invalid-text">${ls.invalidation||"—"}</div>
+      </div>
+    </div>`;
+
+  // Short setup
+  const ss = coin.short || {};
+  const sFav = bias==="SHORT";
+  const shortBlock = `
+    <div class="setup-block setup-short ${sFav?"favoured":""}">
+      ${sFav?'<div class="favoured-tag tag-short">FAVOURED</div>':""}
+      <div class="setup-header">
+        <span class="setup-type type-short">SHORT</span>
+        <span class="setup-entry" style="color:#ff3b5c">${ss.entryFmt||"—"}</span>
+      </div>
+      <div class="condition-box cond-short">
+        <div class="cond-label" style="color:#ff3b5c">📋 ENTRY CONDITION</div>
+        <div class="cond-text">${ss.condition||"—"}</div>
+      </div>
+      <div class="levels-grid">
+        <div class="level-cell"><div class="level-label">STOP LOSS</div><div class="level-val" style="color:#ff3b5c">${ss.stopFmt||fp(ss.stopLoss)}</div></div>
+        <div class="level-cell"><div class="level-label">R:R (TP1)</div><div class="level-val" style="color:#ffcc00">${ss.rr1||"—"}</div></div>
+        <div class="level-cell"><div class="level-label">TAKE PROFIT 1</div><div class="level-val" style="color:#00e87a">${ss.tp1Fmt||fp(ss.tp1)}</div></div>
+        <div class="level-cell"><div class="level-label">TAKE PROFIT 2</div><div class="level-val" style="color:rgba(0,232,122,.65)">${ss.tp2Fmt||fp(ss.tp2)}</div></div>
+      </div>
+      <div class="invalid-box">
+        <div class="invalid-label">⛔ INVALIDATION</div>
+        <div class="invalid-text">${ss.invalidation||"—"}</div>
+      </div>
+    </div>`;
+
+  // Key levels
+  const kl = coin.keyLevels || {};
+  const klBlock = `
+    <div class="key-levels">
+      <div class="kl-cell"><div class="kl-label">MAJOR SUPPORT (1H)</div><div class="kl-val" style="color:#00e87a">${fp(kl.majorSupport)}</div></div>
+      <div class="kl-cell"><div class="kl-label">MAJOR RESISTANCE (1H)</div><div class="kl-val" style="color:#ff3b5c">${fp(kl.majorResistance)}</div></div>
+      <div class="kl-cell"><div class="kl-label">SUPPORT (15M)</div><div class="kl-val" style="color:rgba(0,232,122,.6)">${fp(kl.support15m)}</div></div>
+      <div class="kl-cell"><div class="kl-label">RESISTANCE (15M)</div><div class="kl-val" style="color:rgba(255,59,92,.6)">${fp(kl.resistance15m)}</div></div>
+    </div>`;
+
+  return `
+  <div class="coin-card ${cardCls}" id="card-${coin.symbol}">
+    <div class="card-header" onclick="toggleExpand('${coin.symbol}')">
+      <span class="bias-badge ${biasCls}">${coin.error?"ERR":bias}</span>
+      <div class="card-info">
+        <div class="card-name-row">
+          <span class="coin-name">${coin.symbol.replace("USDT","")}</span>
+          ${price>0?`<span class="coin-price">${fp(price)}</span>`:""}
+          ${chg!==0?`<span class="coin-change" style="color:${chgCol}">${chg>=0?"+":""}${chg.toFixed(2)}%</span>`:""}
+          ${fr!==0?`<span class="fr-badge" style="color:${frCol}">FR ${fr>=0?"+":""}${fr.toFixed(4)}%</span>`:""}
+        </div>
+        ${coin.error
+          ? `<div style="font-family:monospace;font-size:10px;color:#ff3b5c">${coin.error}</div>`
+          : `<div class="trend-row">
+              <span class="trend-item ${trendClass(coin.trend1h)}">1H: ${trendText(coin.trend1h)}</span>
+              <span class="trend-item ${trendClass(coin.trend15m)}">15M: ${trendText(coin.trend15m)}</span>
+              <span class="trend-item ${trendClass(coin.trend5m)}">5M: ${trendText(coin.trend5m)}</span>
+             </div>`
+        }
+      </div>
+      <div class="card-right">
+        <canvas id="spark-${coin.symbol}" class="sparkline-wrap" width="80" height="28"></canvas>
+        ${!coin.error?`<span class="chevron">${state.expanded[coin.symbol]?"▲":"▼"}</span>`:""}
+        <button class="remove-btn" onclick="event.stopPropagation();removeCoin('${coin.symbol}')">✕</button>
+      </div>
+    </div>
+    ${!coin.error ? `
+    <div class="card-detail" id="detail-${coin.symbol}">
+      <div class="setups-row">${longBlock}${shortBlock}</div>
+      ${klBlock}
+      <div class="stats-row">
+        <div class="stat-cell"><div class="stat-label">24H HIGH</div><div class="stat-val" style="color:#00e87a">${fp(coin.high24h)}</div></div>
+        <div class="stat-cell"><div class="stat-label">24H LOW</div><div class="stat-val" style="color:#ff3b5c">${fp(coin.low24h)}</div></div>
+        <div class="stat-cell"><div class="stat-label">MARK PRICE</div><div class="stat-val" style="color:var(--muted)">${fp(coin.markPrice)}</div></div>
+      </div>
+      <div class="card-footer">
+        <span>Bitunix · ${coin.fetchedAt||"—"}</span>
+      </div>
+    </div>` : ""}
+  </div>`;
+}
+
+// ── Init ───────────────────────────────────────────────────────────────
+render();
+fetchData();
+</script>
+</body>
+  </html>
