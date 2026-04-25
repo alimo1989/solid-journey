@@ -3,7 +3,18 @@ const axios = require("axios");
 const cors = require("cors");
 
 const app = express();
-app.use(cors());
+
+// Explicit CORS — allow all origins, all methods
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  if (req.method === "OPTIONS") return res.sendStatus(200);
+  next();
+});
+
+app.use(cors({ origin: "*" }));
+app.use(express.json());
 
 const BASE = "https://fapi.bitunix.com/api/v1/futures/market";
 const DEFAULT_COINS = ["KATUSDT","BSBUSDT","APEUSDT","RAVEUSDT","BLESSUSDT"];
@@ -19,11 +30,11 @@ async function fetchCoin(symbol) {
   try {
     const [tickerRes, fundingRes, kline1hRes, kline15mRes, kline5mRes] =
       await Promise.all([
-        axios.get(`${BASE}/tickers?symbols=${symbol}`),
-        axios.get(`${BASE}/funding_rate?symbol=${symbol}`),
-        axios.get(`${BASE}/kline?symbol=${symbol}&interval=1h&limit=50`),
-        axios.get(`${BASE}/kline?symbol=${symbol}&interval=15m&limit=50`),
-        axios.get(`${BASE}/kline?symbol=${symbol}&interval=5m&limit=50`),
+        axios.get(`${BASE}/tickers?symbols=${symbol}`, { timeout: 10000 }),
+        axios.get(`${BASE}/funding_rate?symbol=${symbol}`, { timeout: 10000 }),
+        axios.get(`${BASE}/kline?symbol=${symbol}&interval=1h&limit=50`, { timeout: 10000 }),
+        axios.get(`${BASE}/kline?symbol=${symbol}&interval=15m&limit=50`, { timeout: 10000 }),
+        axios.get(`${BASE}/kline?symbol=${symbol}&interval=5m&limit=50`, { timeout: 10000 }),
       ]);
 
     const ticker  = tickerRes.data?.data?.[0]  || {};
@@ -34,14 +45,22 @@ async function fetchCoin(symbol) {
 
     function analyseKlines(klines) {
       if (!klines.length) return {};
-      const closes  = klines.map(k => f(k.close || k[4]));
-      const highs   = klines.map(k => f(k.high  || k[2]));
-      const lows    = klines.map(k => f(k.low   || k[3]));
-      const volumes = klines.map(k => f(k.volume || k[5]));
 
-      const last    = closes[closes.length - 1];
-      const prev10  = closes[Math.max(0, closes.length - 11)];
-      const pctChg  = prev10 > 0 ? ((last - prev10) / prev10) * 100 : 0;
+      // Bitunix kline fields: [time, open, high, low, close, volume]
+      const getField = (k, idx, key) => {
+        if (Array.isArray(k)) return f(k[idx]);
+        return f(k[key]);
+      };
+
+      const closes  = klines.map(k => getField(k, 4, "close"));
+      const highs   = klines.map(k => getField(k, 2, "high"));
+      const lows    = klines.map(k => getField(k, 3, "low"));
+      const opens   = klines.map(k => getField(k, 1, "open"));
+      const volumes = klines.map(k => getField(k, 5, "volume"));
+
+      const last   = closes[closes.length - 1];
+      const prev10 = closes[Math.max(0, closes.length - 11)];
+      const pctChg = prev10 > 0 ? ((last - prev10) / prev10) * 100 : 0;
 
       const trend = Math.abs(pctChg) < 1 ? "sideways"
         : pctChg > 0 ? "uptrend" : "downtrend";
@@ -51,17 +70,17 @@ async function fetchCoin(symbol) {
       const last5Highs  = highs.slice(-5);
       const last5Lows   = lows.slice(-5);
 
-      const resistance  = Math.max(...last20Highs);
-      const support     = Math.min(...last20Lows);
-      const recentHigh  = Math.max(...last5Highs);
-      const recentLow   = Math.min(...last5Lows);
+      const resistance = Math.max(...last20Highs);
+      const support    = Math.min(...last20Lows);
+      const recentHigh = Math.max(...last5Highs);
+      const recentLow  = Math.min(...last5Lows);
 
-      const lastClose   = closes[closes.length - 1];
-      const lastOpen    = f(klines[klines.length - 1].open || klines[klines.length - 1][1]);
-      const bullish     = lastClose >= lastOpen;
+      const lastClose  = closes[closes.length - 1];
+      const lastOpen   = opens[opens.length - 1];
+      const bullish    = lastClose >= lastOpen;
 
-      const avgVol      = volumes.slice(-20).reduce((a,b) => a+b, 0) / 20;
-      const lastVol     = volumes[volumes.length - 1];
+      const avgVol     = volumes.slice(-20).reduce((a, b) => a + b, 0) / 20;
+      const lastVol    = volumes[volumes.length - 1];
       const volumeAbove = lastVol > avgVol;
 
       return { trend, resistance, support, recentHigh, recentLow, bullish, volumeAbove, lastClose };
@@ -74,21 +93,21 @@ async function fetchCoin(symbol) {
     const price = f(ticker.lastPrice || ticker.markPrice);
     const fr    = f(funding.fundingRate) * 100;
 
-    // bias logic
+    // bias
     let bias = "NEUTRAL";
     if (["uptrend"].includes(tf1h.trend) &&
         ["uptrend","sideways"].includes(tf15m.trend)) bias = "LONG";
     else if (["downtrend"].includes(tf1h.trend) &&
              ["downtrend","sideways"].includes(tf15m.trend)) bias = "SHORT";
 
-    // levels
+    // entry levels
     const longEntry  = f(tf5m.recentLow);
-    const longSL     = f(tf5m.support)   * 0.99;
-    const longTP1    = (price + f(tf1h.resistance)) / 2;
+    const longSL     = f(tf5m.support)    * 0.99;
+    const longTP1    = price > 0 ? (price + f(tf1h.resistance)) / 2 : f(tf1h.resistance);
     const longTP2    = f(tf1h.resistance);
     const shortEntry = f(tf5m.recentHigh);
-    const shortSL    = f(tf5m.resistance) * 1.01;
-    const shortTP1   = (price + f(tf1h.support)) / 2;
+    const shortSL    = f(tf5m.resistance)  * 1.01;
+    const shortTP1   = price > 0 ? (price + f(tf1h.support)) / 2 : f(tf1h.support);
     const shortTP2   = f(tf1h.support);
 
     function rr(entry, sl, tp) {
@@ -98,9 +117,10 @@ async function fetchCoin(symbol) {
       return "1:" + (reward / risk).toFixed(1);
     }
 
-    function priceFmt(n) {
+    function pf(n) {
       if (!n || isNaN(n)) return "—";
-      if (n >= 1)      return n.toFixed(4);
+      if (n >= 1000)  return n.toFixed(2);
+      if (n >= 1)     return n.toFixed(4);
       if (n >= 0.0001) return n.toFixed(6);
       return n.toPrecision(4);
     }
@@ -108,45 +128,45 @@ async function fetchCoin(symbol) {
     return {
       symbol,
       price,
-      change24h:    f(ticker.priceChangePercent || ticker.change24h),
-      high24h:      f(ticker.high),
-      low24h:       f(ticker.low),
-      volume24h:    f(ticker.quoteVol || ticker.baseVol),
-      fundingRate:  fr,
-      markPrice:    f(ticker.markPrice),
-      trend1h:      tf1h.trend,
-      trend15m:     tf15m.trend,
-      trend5m:      tf5m.trend,
+      change24h:  f(ticker.priceChangePercent || ticker.change24h),
+      high24h:    f(ticker.high),
+      low24h:     f(ticker.low),
+      volume24h:  f(ticker.quoteVol || ticker.baseVol),
+      fundingRate: fr,
+      markPrice:  f(ticker.markPrice),
+      trend1h:    tf1h.trend  || "sideways",
+      trend15m:   tf15m.trend || "sideways",
+      trend5m:    tf5m.trend  || "sideways",
       bias,
       long: {
         entry:       longEntry,
-        entryFmt:    priceFmt(longEntry),
+        entryFmt:    pf(longEntry),
         stopLoss:    longSL,
-        stopFmt:     priceFmt(longSL),
+        stopFmt:     pf(longSL),
         tp1:         longTP1,
-        tp1Fmt:      priceFmt(longTP1),
+        tp1Fmt:      pf(longTP1),
         tp2:         longTP2,
-        tp2Fmt:      priceFmt(longTP2),
+        tp2Fmt:      pf(longTP2),
         rr1:         rr(longEntry, longSL, longTP1),
         rr2:         rr(longEntry, longSL, longTP2),
-        condition:   `Go long at ${priceFmt(longEntry)} if the 5m candle closes green above this level with volume above the 20-candle average — confirming a bounce at the recent low`,
-        invalidation:`Do not enter long if price closes below ${priceFmt(longSL)} on the 5m — support has broken`,
+        condition:   `Go long at ${pf(longEntry)} if the 5m candle closes GREEN above this level with volume above average — confirming a bounce at the recent low`,
+        invalidation:`Do not enter if price closes below ${pf(longSL)} on the 5m — support has broken`,
         support:     tf5m.support,
         resistance:  tf1h.resistance,
       },
       short: {
         entry:       shortEntry,
-        entryFmt:    priceFmt(shortEntry),
+        entryFmt:    pf(shortEntry),
         stopLoss:    shortSL,
-        stopFmt:     priceFmt(shortSL),
+        stopFmt:     pf(shortSL),
         tp1:         shortTP1,
-        tp1Fmt:      priceFmt(shortTP1),
+        tp1Fmt:      pf(shortTP1),
         tp2:         shortTP2,
-        tp2Fmt:      priceFmt(shortTP2),
+        tp2Fmt:      pf(shortTP2),
         rr1:         rr(shortEntry, shortSL, shortTP1),
         rr2:         rr(shortEntry, shortSL, shortTP2),
-        condition:   `Go short at ${priceFmt(shortEntry)} if the 5m candle closes red below this level with volume above the 20-candle average — confirming rejection at the recent high`,
-        invalidation:`Do not enter short if price closes above ${priceFmt(shortSL)} on the 5m — resistance has broken`,
+        condition:   `Go short at ${pf(shortEntry)} if the 5m candle closes RED below this level with volume above average — confirming rejection at the recent high`,
+        invalidation:`Do not enter if price closes above ${pf(shortSL)} on the 5m — resistance has broken`,
         support:     tf1h.support,
         resistance:  tf5m.resistance,
       },
@@ -159,6 +179,7 @@ async function fetchCoin(symbol) {
       fetchedAt: new Date().toUTCString(),
     };
   } catch(e) {
+    console.error(`Error fetching ${symbol}:`, e.message);
     return { symbol, error: e.message, fetchedAt: new Date().toUTCString() };
   }
 }
@@ -167,15 +188,15 @@ async function runScan(coins) {
   console.log(`[${new Date().toUTCString()}] Scanning ${coins.join(", ")}...`);
   const results = await Promise.all(coins.map(fetchCoin));
   cache = { data: results, lastUpdated: new Date().toISOString() };
-  console.log(`Scan complete.`);
+  console.log(`Scan complete. ${results.filter(r=>!r.error).length}/${results.length} successful.`);
 }
 
-// endpoints
 app.get("/api/health", (req, res) => {
   res.json({
     status: "ok",
     lastUpdated: cache.lastUpdated,
     coins: cache.data.map(d => d.symbol),
+    errors: cache.data.filter(d=>d.error).map(d=>({symbol:d.symbol,error:d.error})),
   });
 });
 
@@ -184,17 +205,19 @@ app.get("/api/scan", (req, res) => {
 });
 
 app.get("/api/coins", (req, res) => {
-  const coins = (req.query.symbols || "").split(",").filter(Boolean).map(s => s.toUpperCase());
-  if (coins.length === 0) return res.json(cache);
+  const coins = (req.query.symbols || "").split(",").filter(Boolean).map(s=>s.toUpperCase());
+  if (!coins.length) return res.json(cache);
   const filtered = cache.data.filter(d => coins.includes(d.symbol));
   res.json({ data: filtered, lastUpdated: cache.lastUpdated });
 });
 
-// initial scan + 15s refresh
-const COINS = process.env.COINS
-  ? process.env.COINS.split(",")
-  : DEFAULT_COINS;
+app.get("/", (req, res) => {
+  res.json({ message: "Signal Scanner Server", status: "ok", endpoints: ["/api/health", "/api/scan"] });
+});
 
+const COINS = process.env.COINS ? process.env.COINS.split(",") : DEFAULT_COINS;
+
+// initial scan then every 15s
 runScan(COINS);
 setInterval(() => runScan(COINS), 15000);
 
