@@ -15,11 +15,9 @@ app.use((req, res, next) => {
 
 app.use(cors({ origin: "*" }));
 app.use(express.json());
-const path = require("path");
 app.get("/", (req, res) => {
-  res.redirect("/index.html");
+  res.send(`<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Signal Desk</title></head><body style="background:#07090d;color:#c8d8e8;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;gap:20px"><div style="font-size:40px;letter-spacing:4px;color:#00d4ff">SIGNAL DESK</div><div style="font-family:monospace;font-size:12px;color:#4a6070">Server is running. Open /api/scan for data.</div><a href="/api/scan" style="color:#00d4ff;font-family:monospace;font-size:12px">/api/scan</a><a href="/api/health" style="color:#00e87a;font-family:monospace;font-size:12px">/api/health</a></body></html>`);
 });
-app.use(express.static(__dirname));
 const BASE = "https://fapi.bitunix.com/api/v1/futures/market";
 const DEFAULT_COINS = ["KATUSDT","BSBUSDT","APEUSDT","RAVEUSDT","BLESSUSDT"];
 
