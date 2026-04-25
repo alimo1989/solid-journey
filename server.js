@@ -15,7 +15,10 @@ app.use((req, res, next) => {
 
 app.use(cors({ origin: "*" }));
 app.use(express.json());
-app.use(express.static("public"));
+const path = require("path");
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "index.html"));
+});;
 
 const BASE = "https://fapi.bitunix.com/api/v1/futures/market";
 const DEFAULT_COINS = ["KATUSDT","BSBUSDT","APEUSDT","RAVEUSDT","BLESSUSDT"];
